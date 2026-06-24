@@ -1,169 +1,411 @@
 # Realm Clash
 
-A fast, tactical two-player card battle game built for collectible wildlife trading cards. Players place animal cards on a small grid and fight using directional arrows and hex stats. Win clashes to capture opponent cards, trigger chain attacks, and build a stronger collection over time.
+**Rules version:** 2.0
 
-Realm Clash is inspired by the spirit of *Tetra Master* (directional arrows, grid placement, chain combos) but uses its own rules, terminology, and capture mechanics so it stands on its own as an original game.
+A tactical two-player card battle game for collectible wildlife trading cards. Players place animals on a **4×4 grid**, fight with **directional arrows**, roll dice for damage, and reduce enemy **health** to zero to capture. Chain combos can snowball across the board. The player with the **highest total health** on the board at the end wins.
+
+Realm Clash is inspired by the spirit of *Tetra Master* (directional arrows, grid placement, chain combos) but uses its own combat system — **attack/defense arrows**, **health pools**, **dice damage**, and **capture-vs-attack mode choice** — so it stands on its own as an original game.
 
 Designed to pair with the **Wildlife Realms** collectible card line (3D-printed HueForge cards), though any compatible card set with arrow layouts can be used.
+
+**Live site (planned):** [realmclash.magical.enterprises](https://realmclash.magical.enterprises)
+
+---
+
+## Platform
+
+Realm Clash is a **web-first Progressive Web App (PWA)** — one client for desktop and mobile browsers, with no native App Store or Play Store builds planned.
+
+| Layer | Choice | Role |
+|-------|--------|------|
+| **Game client** | PixiJS + TypeScript | Board, cards, arrows, animations, VFX |
+| **Site shell** | Static site (same repo) | Rules, lore, account entry, install prompt |
+| **Game backend** | Dynamic API (later) | Matchmaking, authoritative rules, PvP sync |
+| **Distribution** | PWA | Add-to-home-screen, offline shell, unified deploy |
+
+### Why PixiJS + TypeScript
+
+- **2D-first** — Grid tactics and card combat map naturally to Pixi; no 3D engine overhead.
+- **Lean vs Flutter Web** — Smaller initial load than CanvasKit-based stacks; important on mobile browsers and cellular connections.
+- **WebGL effects** — Shaders and filters support rarity shimmer, clash flashes, and chain-attack trails.
+- **PWA-friendly** — Service worker caches the client; gameplay traffic stays small (turn-based intents, not heavy asset streaming).
+- **Backend synergy** — TypeScript on client and API keeps types and protocols aligned.
+- **Canvas rendering** — Card art is drawn to canvas, not exposed as trivial DOM images (raising the bar on casual scraping, not a security vault).
+
+### Planned client architecture
+
+```
+realm-clash/
+├── site/           # Static pages (rules, marketing, PWA manifest)
+├── client/         # PixiJS game (renderer, input, animations)
+├── core/           # Portable rules (clashes, chains, captures) — shared with server
+└── server/         # Authoritative match backend (future)
+```
+
+The **rules core** stays separate from the renderer so game logic can be tested without Pixi and reused by the server for validation.
 
 ---
 
 ## What Makes Realm Clash Distinctive
 
-- **Directional combat** — Each card attacks in specific compass directions. Positioning on the grid matters as much as raw power.
-- **Physical / Instinct stats** — Instead of fantasy attributes, every arrow uses two hex digits grounded in animal biology: raw strength and survival instinct.
-- **Chain attacks** — Winning a battle can cascade into additional attacks from your other cards, creating swingy, satisfying turns.
-- **Cards change hands** — Captured cards stay with the player who wins them, encouraging trading, rematches, and collection building between games.
-- **Rarity has gameplay weight** — Rarer cards tend toward higher stats and special abilities, giving chase cards real table value.
+- **Directional attack and defense** — Each arrow carries its own **attack** and **defense** values. A card can be fierce to the north and vulnerable to the south.
+- **Health and damage** — Cards are not captured in a single clash. They must be worn down and finished at **0 HP** (except undefended instant captures).
+- **Dice tension** — Damage uses **1d6** so skill and luck blend; good positioning still dominates over time.
+- **Capture vs attack choice** — On placement, choose **Capture mode** (free undefended takes) or **Attack mode** (mutual-arrow battles). You cannot do both on the same turn when both are available.
+- **Depth-first chain combos** — Capturing via combat lets the new card attack immediately, resolving fully before returning up the chain.
+- **Health race victory** — Win by **total remaining HP** on the board, not just card count. Preserving a wounded legendary can still win the match.
+- **Collection economy** — Captured cards change owners per lobby rules, encouraging trades and rematches.
 
 ---
 
 ## Card Components
 
-Each playable card uses the **back** of the card for game information:
+Each playable card uses the **back** for game information:
 
 | Component | Description |
 |-----------|-------------|
-| **Arrows** | Up to 8 directional attack indicators (compass points: N, NE, E, SE, S, SW, W, NW). Most cards use 3–6 arrows. |
-| **Physical** | First hex digit (0–F) on each arrow. Raw power, strength, size, and ferocity. |
-| **Instinct** | Second hex digit (0–F) on each arrow. Agility, cunning, senses, stealth, and survival intelligence. |
-| **Element** | Optional biome tag (e.g., Savanna, Jungle, Ocean, Mountain) used for advanced rules. |
-| **Special Ability** | Optional one-time effect on higher-rarity cards (e.g., *Roar: Stun one enemy arrow for a turn*). |
+| **Health (HP)** | 3-digit hex value at card center (display range `0x010`–`0x180`). Current HP tracked during play. |
+| **Arrows** | 1–8 directions (N, NE, E, SE, S, SW, W, NW). Rarer cards tend toward more arrows. |
+| **Attack** | First hex digit (`0`–`F`) on each arrow. Offensive power in that direction. |
+| **Defense** | Second hex digit (`0`–`F`) on each arrow. Resistance from that direction. |
+| **Element** | Optional biome tag (Savanna, Jungle, Ocean, Mountain, etc.). Lobby toggle. |
+| **Special Ability** | Optional one-time effect on higher-rarity cards. |
 
-**Stat format example:** `A/7` → Physical 10 (A in hex), Instinct 7.
+**Arrow stat format:** `A/9` → Attack 10, Defense 9 in that direction.
+
+**Generation note:** HP, attack, and defense are rolled per card within rarity-weighted ranges (see [Numeric Tuning](#numeric-tuning-v20)). Commons skew low; legendaries skew high. No card should be strong in every direction.
 
 ---
 
 ## Setup
 
-1. Each player builds a team of **3 to 5 cards**.
-2. Lay out a **3×3** or **4×4** grid (a printable playmat is recommended).
-3. Decide win condition (see [Winning the Game](#winning-the-game)).
-4. Determine first player (coin flip, youngest player, etc.).
-5. Players take turns placing **one card per turn** onto an empty grid space.
+1. Each player selects **5 cards** (no deck — each card is placed at most once).
+2. Use a **4×4 grid** (16 cells).
+3. Choose **ownership mode** for the session (see [Card Ownership](#card-ownership)).
+4. Optionally enable **element bonus** in the lobby.
+5. Determine first player (coin flip, etc.).
+6. Players alternate placing **one card per turn** on an empty cell.
 
 ---
 
 ## Turn Structure
 
-On your turn, place one card from your hand onto any empty space on the grid. Once placed, resolve all of that card's arrows immediately (see [Battle Rules](#battle-rules)).
+1. **Place** one card from your hand on an empty grid cell.
+2. **Declare mode** for that placement:
+   - **Capture mode** — if any arrow points at an adjacent enemy card **without** a defending arrow pointing back.
+   - **Attack mode** — if any arrow points at an adjacent enemy card **with** a mutual defending arrow.
+   - If **both** are possible, the placing player **must choose one mode**. If only one is possible, that mode is forced.
+3. **Resolve** all effects for that mode (see [Battle Rules](#battle-rules)).
+4. **End turn** — pass to opponent.
+
+Arrows pointing at **empty cells do nothing**.
 
 ---
 
 ## Battle Rules
 
-When a card is placed or activated, check **every arrow** on that card:
+### Capture mode
 
-### 1. Arrow points at an empty space
+For each arrow on the placed card that points at an adjacent enemy card **without** a defending arrow pointing back:
 
-You **claim** that space. Your card moves into it or takes control of it (house rule: agree before the game whether cards physically shift or remain in place while controlling adjacent tiles).
+- That enemy card is **instantly captured** (no damage roll, no HP check).
+- Captured card transfers to the placing player at **current HP**.
+- Each capture triggers a **chain combo** (see [Chain Combos](#chain-combos)).
 
-### 2. Arrow points at an opponent's card — no arrow pointing back
+**Capture mode does not resolve mutual-arrow battles.**
 
-You **automatically capture** the opponent's card. The captured card joins your collection for the rest of the session (see [Card Ownership](#card-ownership)).
+### Attack mode
 
-### 3. Arrows point at each other — battle!
+For **every** mutual-arrow adjacency on the placed card:
 
-Compare stats on the clashing arrows:
+- The placing player **must** resolve all such attacks.
+- The player chooses the **order** in which mutual arrows fire.
+- Each attack follows the steps below.
 
-1. Compare **Physical** first. The higher value wins.
-2. If Physical is tied, compare **Instinct** as the tiebreaker.
-3. The **winner captures** the loser's card.
+**Attack mode does not allow instant captures**, even if an undefended arrow also exists.
 
-### 4. Combo / Chain Attack
+### Single attack resolution
 
-When you win a battle, immediately trigger a **chain attack**:
+1. **Compare digits:** Attacker's **attack** digit vs defender's **defense** digit on the clashing arrows.
+2. **Attacker wins compare** (attack > defense):
+   - Roll **1d6**.
+   - **Damage** = `(attack + d6) × 2`
+   - Subtract damage from defender's **current HP**.
+3. **Tie** (attack = defense):
+   - **No damage.** Defender holds.
+4. **Attacker loses compare** (attack < defense):
+   - **Counter-damage** to the attacker = `(defense − attack) + 1d6`
+   - Subtract from attacker's current HP.
+   - No chain triggered from a failed attack.
 
-- Check all of your **other** cards on the grid.
-- Any of your cards with an arrow pointing at the **defeated** card may attack immediately.
-- Resolve each chain attack using the same battle rules.
-- Chains continue until no more valid attacks remain.
+### Defeat and capture
 
-This is the signature Realm Clash moment — a single well-placed card can snowball into a multi-card takeover.
+| Capture type | HP condition | Board state | Chains |
+|--------------|--------------|-------------|--------|
+| **Instant** (Capture mode) | No damage | Flips to captor at **current HP** | No combat chain |
+| **Combat** (Attack mode) | HP → 0 | Flips to captor at **1 HP** | **Yes** — captured card may attack |
+
+- When combat reduces a card to **0 HP or below**, it is **captured** by the player who dealt the killing blow.
+- The captured card **stays on the board** under the captor's control at **1 HP** (minimum).
+- The captor may immediately use the **captured card's arrows** to continue the combo (see [Chain Combos](#chain-combos)).
+- Ownership transfer for collection purposes follows the lobby mode regardless of final match outcome.
+
+### Chain combos (combat captures only)
+
+When a card is captured **via combat** (HP → 0):
+
+1. That card flips to the captor at **1 HP** and may attack using **its arrows** in a direction the captor chooses (one mutual-arrow attack per chain step, if valid).
+2. If that chain attack defeats another card, **fully resolve** that sub-chain (depth-first) before other pending attacks.
+3. After the depth-first subtree completes, resume any remaining attacks from the original placed card (if attack mode and arrows remain) or end the chain step.
+4. Repeat until no legal chain attacks remain or limits are hit.
+
+**Depth-first rule:** Always finish the deepest capture branch before returning to shallower pending attacks.
+
+**Chain limits (online):**
+
+| Limit | Value |
+|-------|-------|
+| Max chain depth | 4 |
+| Max resolutions per placement | 12 |
+
+Instant captures in **Capture mode** do **not** trigger combat chains.
+
+### Focus fire
+
+Across a turn and its chains, **multiple friendly cards** may attack the **same target**. Each attack resolves separately. Wounded cards are prime finish targets.
+
+---
+
+## Chain Combos
+
+```
+Place card → Attack mode → Arrow 1 damages enemy
+         → Arrow 2 kills enemy (HP 0) → card flips at 1 HP
+         → Captured card attacks via its arrows → kills another
+         → Resolve sub-chain depth-first
+         → Return to remaining arrows on placed card
+```
+
+- **Captured cards fight for you** — A combat capture at 1 HP can immediately attack with its own arrows.
+- **Order matters** — Kill weak cards first to open chains, or soften a legendary before a second attacker.
+- **Depth-first** — Fully resolve the deepest capture branch before sibling attacks.
+- **Limits** — Max depth 4, max 12 total resolutions per placement turn.
 
 ---
 
 ## Card Ownership
 
-**You keep every card you capture, whether you win or lose the overall game.**
+Choose a lobby mode before the match:
 
-This rule is intentional:
+| Mode | Behavior |
+|------|----------|
+| **Casual** | Captures are in-match only. Collections do not change after the game. |
+| **Ranked / stakes** | Captured cards transfer digitally to the winner's collection. |
+| **Sandbox** | All players use rented or test cards; no permanent transfers. |
 
-- Cards flow between players naturally, encouraging trades after matches.
-- You can use weaker commons as bait to capture a rare card from an opponent.
-- Players are incentivized to play again, buy more packs, and rebalance their teams.
-
-Between sessions, agree with your opponent how to settle ownership (trade back, keep captures, or hybrid).
+Captured cards **always** transfer per the lobby mode, whether the captor wins or loses the overall match.
 
 ---
 
 ## Winning the Game
 
-Choose one mode before you start:
+The game ends when **both players have placed all 5 cards** (10 cards total on the grid, accounting for captures removing cards).
 
-| Mode | Condition |
-|------|-----------|
-| **Elimination** | Play until one player has no cards left on the grid. The other player wins. |
-| **Rounds** | Play a set number of rounds, then compare total captured card value. Rarer cards score more points. |
-| **Collection** | After a session, the player holding the highest combined rarity value wins — even if they lost individual rounds. |
+**Winner:** Player with the **higher sum of current HP** across all cards they control **on the board**.
 
-For casual play, elimination is the simplest. For events, the rounds or collection modes work well.
+| Tiebreaker | Rule |
+|------------|------|
+| 1st | Most cards on the board |
+| 2nd | Highest combined rarity value |
+| 3rd | Draw |
+
+**Note:** Only cards **on the board** at game end count toward the HP victory total. Captured-and-flipped cards count for the player who currently controls them.
 
 ---
 
 ## Advanced Rules (Optional)
 
-### Element Advantage
+### Element bonus (lobby toggle)
 
-Cards carry a biome/element tag. When two clashing arrows belong to cards of the **same element**, the attacking card gets **+1 Instinct** for that battle only.
+When enabled, same-element attackers gain **+1 attack** on the clashing arrow for that hit only.
 
-Suggested matchup bonus (optional expansion): certain elements beat others (e.g., Mountain beats Savanna). Define a simple rock-paper-scissors chart for your set.
+Optional expansion: elemental advantage chart (e.g., Mountain beats Savanna).
 
-### Special Abilities
+### Special abilities
 
-Higher-rarity cards may include a one-time ability. Examples:
+Higher-rarity cards may include a **once-per-match** ability. Examples:
 
-- **Roar** — Stun one enemy arrow for the next turn (it cannot attack).
-- **Stampede** — After winning a battle, gain +1 Physical on your next chain attack.
-- **Camouflage** — The first arrow pointing at this card this turn is ignored.
+- **Roar** — Stun one enemy arrow for the next turn (cannot attack or defend).
+- **Stampede** — Next attack this turn gains +2 attack before damage calculation.
+- **Camouflage** — First attack against this card each match deals −4 damage (minimum 0).
 
-Use abilities sparingly to keep the core game fast and approachable.
+Use sparingly in v1 online play.
+
+### Tabletop 2d6 variant
+
+For slower, swingier physical play, replace `1d6` with `2d6` in the damage formula. Not recommended for online ranked (longer turns).
 
 ---
 
-## Quick Start (Packaging Insert)
+## Quick Start
 
-> Place cards on the grid. Arrows attack in their direction.
-> Higher Physical wins clashes; Instinct breaks ties.
-> Win a battle → trigger chain attacks from your other cards pointing at the defeated card.
-> Capture cards to grow your collection. Trade and play again!
+> Build a team of 5. Take turns placing cards on a 4×4 grid.
+> Each arrow has **Attack/Defense** and each card has **HP**.
+> Choose **Capture** (free undefended takes) or **Attack** (fight mutual arrows) — not both.
+> Attacks: higher **Attack vs Defense** deals `(attack + 1d6) × 2` damage. Loser may take counter-damage.
+> HP hits 0 → captured. Chains let you keep fighting — depth-first, up to 4 deep.
+> When all cards are placed, **highest total HP on the board** wins.
 
 ---
 
 ## Design Notes
 
-Realm Clash was designed with these goals in mind:
-
-1. **Teachable in under two minutes** — Hex comparison and directional arrows are easy to learn.
-2. **Tactically deep** — Arrow layout, grid position, and chain setup reward repeated play.
-3. **Collection-friendly** — Gameplay and collecting reinforce each other; rare cards are worth owning in both senses.
-4. **Legally distinct** — Directional grid combat is a known genre, but Realm Clash uses its own stat system (Physical / Instinct), capture economy, and wildlife theming rather than copying any existing game's exact rules.
+1. **Teachable in ~5 minutes** — Modes, arrows, and one damage formula; chains add depth over time.
+2. **Tactically deep** — Arrow layout, mode choice, attack order, focus fire, and HP preservation all matter.
+3. **Tuned for ~8–12 minute online matches** — See numeric tuning; commons fall in 2–3 hits, legendaries need coordinated focus fire.
+4. **Legally distinct** — Directional grid genre is shared; HP + dice + attack/defense split + mode fork + HP victory condition is original expression.
 
 ---
 
-## Stat Balancing Guidelines
+## Numeric Tuning (v2.0)
 
-When assigning stats to cards in a set:
+Official ranges for generated card stats. Values are hex unless noted.
 
-| Rarity | Typical Physical / Instinct range | Notes |
-|--------|-----------------------------------|-------|
-| Common | 1–6 / 1–6 | Simple layouts, 3–4 arrows |
-| Uncommon | 3–8 / 3–8 | Slightly more arrows or higher peaks |
-| Rare | 5–A / 5–A | Strong in one direction, action poses |
-| Ultra Rare | 7–C / 7–C | High peaks, special layouts |
-| Secret Rare / Legendary | 9–F / 8–F | Best stats, often unique abilities |
+### Health (HP) by rarity
 
-No card should dominate every direction. Give each animal a **strength side** and a **weak side** so positioning stays meaningful.
+| Rarity | HP range (hex) | HP range (decimal) | Mean target |
+|--------|----------------|----------------------|-------------|
+| Common | `0x10`–`0x30` | 16–48 | ~32 |
+| Uncommon | `0x28`–`0x50` | 40–80 | ~60 |
+| Rare | `0x45`–`0x80` | 69–128 | ~100 |
+| Ultra Rare | `0x70`–`0xC0` | 112–192 | ~150 |
+| Secret Rare | `0xA0`–`0xF0` | 160–240 | ~200 |
+| Legendary | `0xC0`–`0x180` | 192–384 | ~280 |
+
+**Hard cap:** `0x180` (384 decimal). Do not use full `0xFFF` except as a display rarity flourish — not for gameplay.
+
+### Arrow count by rarity
+
+| Rarity | Arrows | Notes |
+|--------|--------|-------|
+| Common | 1–3 | At least 1 arrow required on every card |
+| Uncommon | 2–4 | |
+| Rare | 3–5 | |
+| Ultra Rare | 4–6 | |
+| Secret Rare | 5–7 | |
+| Legendary | 6–8 | Peak at 8 |
+
+### Attack / defense per arrow by rarity
+
+| Rarity | Attack range | Defense range | Design note |
+|--------|--------------|---------------|-------------|
+| Common | 1–5 | 1–5 | One strong side, one weak side |
+| Uncommon | 2–7 | 2–7 | |
+| Rare | 4–9 | 4–9 | |
+| Ultra Rare | 6–12* | 6–12* | *Treat `A`=10, `B`=11, `C`=12 in generation; store as hex `A`–`C` |
+| Secret Rare | 6–D | 6–D | |
+| Legendary | 7–F | 7–F | One arrow may reach `F`; no arrow should be `F/F` on launch cards |
+
+**Balance rule:** Sum of all attack digits on a card ≤ `(arrow count × rarity cap)` per internal generator. No perfect arrows (`F/F`) at launch.
+
+### Damage formula
+
+| Step | Formula |
+|------|---------|
+| Hit damage | `(attack + 1d6) × 2` |
+| Counter damage | `(defense − attack) + 1d6` (only when attack < defense) |
+| Minimum damage | 1 (if formula yields 0 or less, round up to 1) |
+| Tie | No damage |
+
+| Roll | Min hit | Max hit (attack F=15) |
+|------|---------|------------------------|
+| 1d6 = 1 | `(A+1)×2` | 32 |
+| 1d6 = 6 | `(A+6)×2` | 42 |
+
+### Expected hits to defeat (solo attacker)
+
+Assumes `(attack + 3.5) × 2` average damage (fair d6 mean):
+
+| Defender rarity | ~HP | ~Atk facing | Avg damage/hit | Solo hits |
+|-----------------|-----|-------------|----------------|-----------|
+| Common | 32 | 4 | 15 | **2–3** |
+| Uncommon | 60 | 6 | 19 | **3–4** |
+| Rare | 100 | 8 | 23 | **4–5** |
+| Ultra Rare | 150 | 9 | 25 | **6** |
+| Secret Rare | 200 | 10 | 27 | **7–8** |
+| Legendary | 280 | 11 | 29 | **9–10** |
+
+**Design intent:** A lone common cannot solo a legendary before the match ends. Legendaries require **focus fire** or **chain setups** — correct for rarity fantasy.
+
+### Focus fire example
+
+Two rare cards (attack 9 each) focus a legendary (280 HP):
+
+- Average damage per hit ≈ 25
+- Four combined hits ≈ 100 damage
+- Legendary still at ~180 HP — needs **continued pressure** or **high rolls** across several turns. ✓
+
+### Common vs common trade
+
+Both ~32 HP, attack 4 vs defense 4:
+
+- Tie → no damage → positioning and multiple arrows matter
+- Attack 5 vs defense 3: avg damage `(5+3.5)×2` ≈ 17 → **2 hits** to capture ✓
+
+### Placement mode decision (examples)
+
+| Situation | Modes available | Best play depends on |
+|-----------|-----------------|----------------------|
+| 2 undefended arrows, 0 mutual | Capture only | Free double capture — usually take it |
+| 0 undefended, 2 mutual | Attack only | Softening or killing key threat |
+| 1 undefended, 1 mutual | **Player chooses** | Free capture vs fighting defended target |
+| 0 undefended, 0 mutual | Neither | Placement for future chains only |
+
+### Chain and turn limits
+
+| Parameter | Value | Reason |
+|-----------|-------|--------|
+| Max chain depth | 4 | Prevents runaway recursion |
+| Max resolutions / placement | 12 | Keeps mobile turns under ~60s |
+| Cards per player | 5 | 10 placements per match |
+| Grid | 4×4 | Room for positioning without emptiness |
+
+### Rarity weighting (generation pseudocode)
+
+```
+hp      = weighted_random(rarity_hp_min, rarity_hp_max, skew=toward_high_for_rare)
+arrows  = weighted_random(rarity_arrow_min, rarity_arrow_max, skew=toward_high_for_rare)
+for each arrow:
+  attack  = weighted_random(rarity_atk_min, rarity_atk_max, skew=toward_high_for_rare)
+  defense = weighted_random(rarity_def_min, rarity_def_max, skew=toward_high_for_rare)
+enforce: at least one arrow; no F/F arrow; directional variance (max − min ≥ 2 across arrows)
+```
+
+### Online vs physical defaults
+
+| Setting | Online PvP | Tabletop |
+|---------|------------|----------|
+| Dice | 1d6 | 1d6 or 2d6 (house rule) |
+| Chain depth cap | 4 | 4 (recommended) |
+| Resolutions cap | 12 | Optional |
+| Element bonus | Lobby toggle | Opt-in |
+| Ownership | Casual / Ranked / Sandbox | Physical trade after match |
+
+---
+
+## Worked Example (one attack)
+
+**Placed card** (Rare lion) attacks north into **enemy zebra** (Common).
+
+| | Attack arrow (N) | Defense arrow (S on zebra) |
+|---|------------------|----------------------------|
+| Digits | `9` / `4` | `3` / `5` |
+| Compare | 9 > 5 → attacker wins | |
+
+- Roll d6 → **4**
+- Damage = `(9 + 4) × 2` = **26**
+- Zebra HP: `0x28` (40) − 26 = **14 HP remaining**
+- No capture yet; zebra can be finished on a later attack or chain.
 
 ---
 
