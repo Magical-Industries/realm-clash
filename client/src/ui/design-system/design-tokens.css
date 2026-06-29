@@ -1,0 +1,116 @@
+/**
+ * Realm Clash design tokens — single source of truth for the PWA UI.
+ * See Grok design thread: dark immersive theme, teal + magenta accents.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Backgrounds & surfaces */
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #12121a;
+  --bg-card: #1c1c28;
+  --bg-overlay: #1c1c28cc;
+  --bg-elevated: #242433;
+
+  /* Text */
+  --text-primary: #f5f5f8;
+  --text-secondary: #a0a0b0;
+  --text-muted: #6b6b7a;
+  --text-on-primary: #0a0a0f;
+  --text-on-danger: #ffffff;
+
+  /* Borders */
+  --border: #2a2a38;
+  --border-strong: #3a3a4d;
+  --border-focus: #00e5c0;
+
+  /* Accents & actions */
+  --primary: #00e5c0;
+  --primary-hover: #00ffcc;
+  --primary-muted: #00e5c033;
+  --secondary: #ff4d94;
+  --secondary-hover: #ff6aa8;
+  --accent-gold: #ffcc33;
+
+  /* Status */
+  --success: #22ff99;
+  --danger: #ff3b5c;
+  --warning: #ffb800;
+
+  /* Players */
+  --player-0: #00e5c0;
+  --player-1: #ff4d94;
+
+  /* Rarity */
+  --rarity-common: #a0a0b0;
+  --rarity-uncommon: #22ff99;
+  --rarity-rare: #00e5c0;
+  --rarity-ultra: #ff4d94;
+  --rarity-secret: #b388ff;
+  --rarity-legendary: #ffd700;
+
+  /* Typography */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 2rem;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Spacing (4px rhythm) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Elevation */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45);
+  --shadow-glow-primary: 0 0 20px rgba(0, 229, 192, 0.25);
+  --shadow-glow-legendary: 0 0 16px rgba(255, 215, 0, 0.35);
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 250ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Layout */
+  --container-max: 72rem;
+  --header-height: 3.5rem;
+  --bottom-nav-height: 4rem;
+  --tap-target: 44px;
+
+  /* Breakpoints (for reference in JS) */
+  --bp-sm: 640px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+}

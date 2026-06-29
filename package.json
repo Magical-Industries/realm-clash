@@ -1,0 +1,13 @@
+{
+  "name": "realm-clash",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Realm Clash — tactical wildlife card battles",
+  "scripts": {
+    "build": "npm run build --prefix core && npm run build --prefix client",
+    "build:core": "npm run build --prefix core",
+    "build:client": "npm run build --prefix client",
+    "dev": "npm run dev --prefix client",
+    "test": "npm test --prefix core"
+  }
+}

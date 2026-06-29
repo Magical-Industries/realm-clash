@@ -8,7 +8,7 @@ Realm Clash is inspired by the spirit of *Tetra Master* (directional arrows, gri
 
 Designed to pair with the **Wildlife Realms** collectible card line (3D-printed HueForge cards), though any compatible card set with arrow layouts can be used.
 
-**Live site (planned):** [realmclash.magical.enterprises](https://realmclash.magical.enterprises)
+**Live site:** [realmclash.magical.enterprises](https://realmclash.magical.enterprises) (GitHub Pages)
 
 ---
 
@@ -36,13 +36,44 @@ Realm Clash is a **web-first Progressive Web App (PWA)** — one client for desk
 
 ```
 realm-clash/
-├── site/           # Static pages (rules, marketing, PWA manifest)
-├── client/         # PixiJS game (renderer, input, animations)
-├── core/           # Portable rules (clashes, chains, captures) — shared with server
+├── client/         # PWA site + PixiJS arena (deployed to GitHub Pages)
+├── core/           # TypeScript rules engine (v2.0) — shared with server
 └── server/         # Authoritative match backend (future)
 ```
 
-The **rules core** stays separate from the renderer so game logic can be tested without Pixi and reused by the server for validation.
+The **`core/`** package (`@magicalindustries/realm-clash-core`) enforces Realm Clash v2.0 rules: placement modes, combat, chains, scoring, and card generation. Run tests with `cd core && npm test`.
+
+The **`client/`** package is a minimal PixiJS hot-seat prototype wired to the core engine. Run it with:
+
+```bash
+cd client && npm install && npm run dev
+```
+
+Then open the local Vite URL (default `http://localhost:5173`).
+
+### Deploy to GitHub Pages
+
+Pushes to `main` build `client/dist` and deploy via GitHub Actions (`.github/workflows/deploy-pages.yml`).
+
+**One-time GitHub setup:**
+
+1. Repo **Settings → Pages → Build and deployment → Source:** GitHub Actions
+2. After the first successful deploy, set **Custom domain** to `realmclash.magical.enterprises`
+
+**DNS (at your domain host):**
+
+| Type  | Name        | Value                         |
+|-------|-------------|-------------------------------|
+| CNAME | realmclash  | `magical-industries.github.io` |
+
+Wait for DNS + HTTPS (GitHub enables TLS automatically once the CNAME verifies).
+
+**Local production build:**
+
+```bash
+npm run build
+# output in client/dist/
+```
 
 ---
 
