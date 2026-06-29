@@ -32,18 +32,18 @@ export function renderPanels(
     onChain: (option: ChainAttackOption) => void;
   },
 ): void {
-  const { state, phase } = snapshot;
+  const { state, phase, matchMode } = snapshot;
   const current = state.currentPlayer;
 
   panels.status.textContent =
     state.status === "finished"
-      ? `Match finished — ${state.winner === "draw" ? "Draw" : playerLabel(state.winner as 0 | 1)} wins`
+      ? `Match finished — ${state.winner === "draw" ? "Draw" : playerLabel(state.winner as 0 | 1, matchMode)} wins`
       : state.pending
-        ? `${playerLabel(current)} — resolve chain`
-        : `${playerLabel(current)} to play · Turn ${state.turnNumber}`;
+        ? `${playerLabel(current, matchMode)} — resolve chain`
+        : `${playerLabel(current, matchMode)} to play · Turn ${state.turnNumber}`;
 
   panels.actionHint.textContent = hintForPhase(snapshot);
-  panels.scores.innerHTML = scoreHtml(state);
+  panels.scores.innerHTML = scoreHtml(snapshot);
 
   panels.eventLog.innerHTML = snapshot.eventLog
     .map((line) => `<li>${escapeHtml(line)}</li>`)
@@ -54,7 +54,13 @@ export function renderPanels(
 }
 
 function hintForPhase(snapshot: ControllerSnapshot): string {
-  switch (snapshot.phase) {
+  const { matchMode, phase, state } = snapshot;
+
+  if (matchMode === "cpu" && state.currentPlayer === 0 && phase !== "game_over") {
+    return "Computer is thinking…";
+  }
+
+  switch (phase) {
     case "select_card":
       return "Drag a card onto the board, or tap a card then tap a cell.";
     case "select_cell":
@@ -70,12 +76,12 @@ function hintForPhase(snapshot: ControllerSnapshot): string {
   }
 }
 
-function scoreHtml(state: ControllerSnapshot["state"]): string {
-  const text = liveScores(state);
+function scoreHtml(snapshot: ControllerSnapshot): string {
+  const text = liveScores(snapshot.state, snapshot.matchMode);
   const [p0, p1] = text.split(" · ");
   return `
-    <div class="score-row"><span class="label-p0">Player 1</span><span>${escapeHtml(p0 ?? "")}</span></div>
-    <div class="score-row"><span class="label-p1">Player 2</span><span>${escapeHtml(p1 ?? "")}</span></div>
+    <div class="score-row"><span class="label-p0">${escapeHtml(playerLabel(0, snapshot.matchMode))}</span><span>${escapeHtml(p0 ?? "")}</span></div>
+    <div class="score-row"><span class="label-p1">${escapeHtml(playerLabel(1, snapshot.matchMode))}</span><span>${escapeHtml(p1 ?? "")}</span></div>
   `;
 }
 

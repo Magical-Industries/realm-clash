@@ -67,15 +67,19 @@ export class HandView {
     selectedCardId: string | null,
     interactive: boolean,
     width: number,
-    options: { dimmed?: boolean; label?: string } = {},
+    options: { dimmed?: boolean; label?: string; hidden?: boolean } = {},
   ): void {
     this.root.removeChildren();
     this.root.alpha = options.dimmed ? 0.55 : 1;
 
-    const labelY = 2;
     const cardsY = 18;
 
-    if (options.label) {
+    if (options.hidden) {
+      this.renderHiddenHand(hand.length, playerId, width, options.label, cardsY);
+      return;
+    }
+
+    if (options.label && !options.hidden) {
       const label = new Text({
         text: options.label,
         style: {
@@ -85,7 +89,7 @@ export class HandView {
           fontFamily: "Inter, system-ui, sans-serif",
         },
       });
-      label.position.set(8, labelY);
+      label.position.set(8, 2);
       this.root.addChild(label);
     }
 
@@ -129,6 +133,66 @@ export class HandView {
 
   get height(): number {
     return HAND_STRIP_HEIGHT;
+  }
+
+  private renderHiddenHand(
+    count: number,
+    playerId: PlayerId,
+    width: number,
+    label: string | undefined,
+    cardsY: number,
+  ): void {
+    if (label) {
+      const labelText = new Text({
+        text: label,
+        style: {
+          fill: playerPixi(playerId),
+          fontSize: 10,
+          fontWeight: "700",
+          fontFamily: "Inter, system-ui, sans-serif",
+        },
+      });
+      labelText.position.set(8, 2);
+      this.root.addChild(labelText);
+    }
+
+    if (count === 0) {
+      const empty = new Text({
+        text: "No cards left",
+        style: { fill: theme.pixi.textMuted, fontSize: 12 },
+      });
+      empty.position.set(8, cardsY);
+      this.root.addChild(empty);
+      return;
+    }
+
+    const cardWidth = 52;
+    const cardHeight = 72;
+    const gap = 6;
+    const totalWidth = count * cardWidth + (count - 1) * gap;
+    const startX = Math.max(8, (width - totalWidth) / 2);
+    const ownerColor = playerPixi(playerId);
+
+    for (let i = 0; i < count; i += 1) {
+      const x = startX + i * (cardWidth + gap);
+      const back = new Graphics()
+        .roundRect(0, 0, cardWidth, cardHeight, 8)
+        .fill({ color: ownerColor, alpha: 0.18 })
+        .stroke({ color: theme.pixi.border, width: 1.5, alpha: 0.9 });
+      back.position.set(x, cardsY);
+
+      const mark = new Text({
+        text: "?",
+        style: {
+          fill: theme.pixi.textMuted,
+          fontSize: 18,
+          fontWeight: "700",
+        },
+      });
+      mark.anchor.set(0.5);
+      mark.position.set(x + cardWidth / 2, cardsY + cardHeight / 2);
+      this.root.addChild(back, mark);
+    }
   }
 
   private computeHandLayout(handCount: number, width: number): HandLayout {

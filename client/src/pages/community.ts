@@ -38,7 +38,7 @@ mountShell(
           <div class="surface-card">
             <h4 class="heading-3">Local Play</h4>
             <p class="body-sm">Pass-and-play on one device — available now in the Arena.</p>
-            <a class="btn btn--ghost" href="/play.html" style="margin-top: var(--space-4)">Open Arena</a>
+            <a class="btn btn--ghost" href="/play.html?mode=pvp&realm=wildlife" style="margin-top: var(--space-4)">Open Arena</a>
           </div>
         </div>
       </section>

@@ -71,7 +71,7 @@ mountShell(
           <p class="body-sm" style="margin-top: var(--space-2)"><strong style="color: var(--text-primary)">Chains:</strong> Depth-first — each combat capture resolves fully before returning up the chain.</p>
         </div>
         <div class="cta-row">
-          <a class="btn btn--primary" href="/play.html">Try it in the Arena</a>
+          <a class="btn btn--primary" href="/play.html?mode=cpu&realm=wildlife">Try it in the Arena</a>
         </div>
       </section>
     </div>

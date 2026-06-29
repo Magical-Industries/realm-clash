@@ -1,9 +1,8 @@
 export type AppRoute =
   | "home"
+  | "realms"
   | "play"
   | "rules"
-  | "collection"
-  | "create"
   | "community";
 
 export interface NavItem {
@@ -11,14 +10,12 @@ export interface NavItem {
   href: string;
   label: string;
   icon: string;
-  mobileOnly?: boolean;
 }
 
 export const NAV_ITEMS: NavItem[] = [
   { route: "home", href: "/", label: "Home", icon: "⌂" },
-  { route: "play", href: "/play.html", label: "Arena", icon: "⚔" },
-  { route: "collection", href: "/collection.html", label: "Collection", icon: "▦" },
-  { route: "create", href: "/create.html", label: "Create", icon: "✦" },
+  { route: "realms", href: "/realms.html", label: "Realms", icon: "◈" },
+  { route: "play", href: "/play.html?mode=cpu&realm=wildlife", label: "Arena", icon: "⚔" },
   { route: "community", href: "/community.html", label: "Community", icon: "◎" },
   { route: "rules", href: "/rules.html", label: "Rules", icon: "?" },
 ];
@@ -41,8 +38,7 @@ function bottomLinkClass(route: AppRoute, active: AppRoute): string {
   return route === active ? "bottom-nav__link bottom-nav__link--active" : "bottom-nav__link";
 }
 
-/** Primary routes shown in mobile bottom nav (5 slots max). */
-const BOTTOM_NAV_ROUTES: AppRoute[] = ["home", "play", "collection", "create", "community"];
+const BOTTOM_NAV_ROUTES: AppRoute[] = ["home", "realms", "play", "community", "rules"];
 
 export function renderShell(options: ShellOptions): string {
   const {
@@ -62,12 +58,10 @@ export function renderShell(options: ShellOptions): string {
     .filter(Boolean)
     .join(" ");
 
-  const desktopNav = NAV_ITEMS.filter((item) => !item.mobileOnly)
-    .map(
-      (item) =>
-        `<a class="${navLinkClass(item.route, activeRoute)}" href="${item.href}">${item.label}</a>`,
-    )
-    .join("");
+  const desktopNav = NAV_ITEMS.map(
+    (item) =>
+      `<a class="${navLinkClass(item.route, activeRoute)}" href="${item.href}">${item.label}</a>`,
+  ).join("");
 
   const bottomNav = showBottomNav
     ? `<nav class="bottom-nav" aria-label="Mobile navigation">
@@ -136,7 +130,7 @@ export function mountShell(
 }
 
 export function defaultFooter(): string {
-  return `<p class="body-sm">Realm Clash · Rules v2.0 · Wildlife Realms compatible</p>`;
+  return `<p class="body-sm">Realm Clash · Rules v2.0 · Multi-realm PWA</p>`;
 }
 
 function escapeHtml(value: string): string {

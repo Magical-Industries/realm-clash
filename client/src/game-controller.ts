@@ -18,7 +18,12 @@ import {
   type Rng,
 } from "@magicalindustries/realm-clash-core";
 
-import { createDemoHands } from "./demo-deck.js";
+import { pickComputerChain, pickComputerPlacement } from "./ai/computer-player.js";
+import { type Difficulty, difficultyLabel } from "./match/difficulty.js";
+import type { MatchMode } from "./match/types.js";
+import { DEFAULT_REALM_ID, requireRealm } from "./realms/index.js";
+
+export type { MatchMode } from "./match/types.js";
 
 export type UiPhase =
   | "select_card"
@@ -27,9 +32,19 @@ export type UiPhase =
   | "select_chain"
   | "game_over";
 
+export interface MatchConfig {
+  mode?: MatchMode;
+  realmId?: string;
+  difficulty?: Difficulty;
+}
+
 export interface ControllerSnapshot {
   state: GameState;
   phase: UiPhase;
+  matchMode: MatchMode;
+  realmId: string;
+  difficulty: Difficulty;
+  humanPlayer: PlayerId;
   selectedCardId: string | null;
   selectedPosition: Position | null;
   availableModes: PlacementMode[];
@@ -37,26 +52,42 @@ export interface ControllerSnapshot {
   eventLog: string[];
 }
 
+const CPU_PLAYER: PlayerId = 0;
+const HUMAN_PLAYER: PlayerId = 1;
+
 export class GameController {
   private state: GameState;
   private rng: Rng;
+  private matchMode: MatchMode;
+  private realmId: string;
+  private difficulty: Difficulty;
+  private humanPlayer: PlayerId;
   private phase: UiPhase = "select_card";
   private selectedCardId: string | null = null;
   private selectedPosition: Position | null = null;
   private availableModes: PlacementMode[] = ["none"];
   private mutualDirections: Direction[] = [];
+
   private eventLog: string[] = [];
 
-  constructor(rng: Rng = new RandomRng()) {
+  constructor(config: MatchConfig = {}, rng: Rng = new RandomRng()) {
+    this.matchMode = config.mode ?? "pvp";
+    this.realmId = config.realmId ?? DEFAULT_REALM_ID;
+    this.difficulty = config.difficulty ?? "medium";
+    this.humanPlayer = HUMAN_PLAYER;
     this.rng = rng;
     this.state = this.createFreshGame();
-    this.pushSystem("New hot-seat match started.");
+    this.pushSystem(this.openingMessage());
   }
 
   getSnapshot(): ControllerSnapshot {
     return {
       state: this.state,
       phase: this.phase,
+      matchMode: this.matchMode,
+      realmId: this.realmId,
+      difficulty: this.difficulty,
+      humanPlayer: this.humanPlayer,
       selectedCardId: this.selectedCardId,
       selectedPosition: this.selectedPosition,
       availableModes: this.availableModes,
@@ -65,7 +96,25 @@ export class GameController {
     };
   }
 
-  resetMatch(): void {
+  isComputerPlayer(playerId: PlayerId): boolean {
+    return this.matchMode === "cpu" && playerId === CPU_PLAYER;
+  }
+
+  isComputerTurn(): boolean {
+    return (
+      this.matchMode === "cpu" &&
+      this.state.status === "active" &&
+      this.isComputerPlayer(this.state.currentPlayer) &&
+      this.phase !== "game_over"
+    );
+  }
+
+  resetMatch(config: MatchConfig = {}): void {
+    if (config.mode) this.matchMode = config.mode;
+    if (config.realmId) this.realmId = config.realmId;
+    if (config.difficulty) this.difficulty = config.difficulty;
+    this.humanPlayer = HUMAN_PLAYER;
+
     this.rng = new RandomRng();
     this.state = this.createFreshGame();
     this.selectedCardId = null;
@@ -74,12 +123,70 @@ export class GameController {
     this.mutualDirections = [];
     this.eventLog = [];
     this.phase = "select_card";
-    this.pushSystem("New hot-seat match started.");
+    this.pushSystem(this.openingMessage());
+  }
+
+  /** Run the computer's turn using only public game state (board + its own hand). */
+  runComputerTurn(): void {
+    if (!this.isComputerTurn()) return;
+
+    let guard = 0;
+    while (guard++ < 24 && this.isComputerTurn()) {
+      if (this.phase === "select_chain" && this.state.pending) {
+        const chain = pickComputerChain(this.state, CPU_PLAYER);
+        if (!chain) break;
+        this.chooseChain(chain);
+        continue;
+      }
+
+      if (this.phase === "select_mode") {
+        const mode = this.availableModes.find((m) => m === "attack")
+          ?? this.availableModes.find((m) => m === "capture")
+          ?? this.availableModes[0];
+        if (!mode) break;
+        this.chooseMode(mode);
+        continue;
+      }
+
+      if (this.phase === "select_card" || this.phase === "select_cell") {
+        const placement = pickComputerPlacement(this.state, CPU_PLAYER);
+        if (!placement) break;
+        this.applySelectCard(placement.cardInstanceId);
+        if (this.phase === "select_cell") {
+          this.applySelectCell(placement.position);
+        }
+        if (this.phase === "select_mode") {
+          this.chooseMode(placement.mode);
+        }
+        continue;
+      }
+
+      break;
+    }
   }
 
   selectCard(instanceId: string): void {
+    if (this.isComputerPlayer(this.state.currentPlayer)) return;
+    this.applySelectCard(instanceId);
+  }
+
+  placeFromHand(instanceId: string, position: Position): void {
+    if (this.isComputerPlayer(this.state.currentPlayer)) return;
+    this.applySelectCard(instanceId);
+    if (this.phase === "select_cell") {
+      this.applySelectCell(position);
+    }
+  }
+
+  selectCell(position: Position): void {
+    if (this.isComputerPlayer(this.state.currentPlayer)) return;
+    this.applySelectCell(position);
+  }
+
+  private applySelectCard(instanceId: string): void {
     if (this.phase === "game_over" || this.state.pending) return;
     if (this.phase !== "select_card" && this.phase !== "select_cell") return;
+
     const hand = this.state.hands[this.state.currentPlayer];
     if (!hand.some((c) => c.instanceId === instanceId)) return;
 
@@ -90,18 +197,7 @@ export class GameController {
     this.mutualDirections = [];
   }
 
-  /** Select a hand card and target cell in one gesture (e.g. drag-and-drop). */
-  placeFromHand(instanceId: string, position: Position): void {
-    if (this.phase === "game_over" || this.state.pending) return;
-    if (this.phase !== "select_card" && this.phase !== "select_cell") return;
-
-    this.selectCard(instanceId);
-    if (this.phase === "select_cell") {
-      this.selectCell(position);
-    }
-  }
-
-  selectCell(position: Position): void {
+  private applySelectCell(position: Position): void {
     if (this.phase !== "select_cell" || !this.selectedCardId || this.state.pending) {
       return;
     }
@@ -186,7 +282,8 @@ export class GameController {
   private afterEngineStep(): void {
     if (this.state.pending) {
       this.phase = "select_chain";
-      this.pushSystem("Choose a chain attack.");
+      const actor = playerLabel(this.state.currentPlayer, this.matchMode);
+      this.pushSystem(`${actor} — resolve chain.`);
       return;
     }
 
@@ -204,12 +301,26 @@ export class GameController {
   }
 
   private createFreshGame(): GameState {
-    const { player0, player1 } = createDemoHands();
+    const realm = requireRealm(this.realmId);
+    const { player0, player1 } = realm.createMatchHands({
+      mode: this.matchMode,
+      difficulty: this.difficulty,
+      rng: this.rng,
+    });
     return createGame({
       player0Hand: player0,
       player1Hand: player1,
       config: { elementBonusEnabled: true },
+      startingPlayer: this.matchMode === "cpu" ? HUMAN_PLAYER : CPU_PLAYER,
     });
+  }
+
+  private openingMessage(): string {
+    const realm = requireRealm(this.realmId);
+    if (this.matchMode === "cpu") {
+      return `New match — ${realm.name} · ${difficultyLabel(this.difficulty)} vs Computer.`;
+    }
+    return `New hot-seat match — ${realm.name} realm.`;
   }
 
   private appendEvents(events: GameEvent[]): void {
@@ -231,20 +342,22 @@ export class GameController {
   private formatEvent(event: GameEvent): string {
     switch (event.type) {
       case "card_placed":
-        return `P${event.playerId + 1} placed ${event.instanceId} at (${event.position.row},${event.position.col}).`;
+        return `${playerLabel(event.playerId, this.matchMode)} placed ${event.instanceId} at (${event.position.row},${event.position.col}).`;
       case "instant_capture":
-        return `P${event.captor + 1} instantly captured ${event.capturedInstanceId} (HP ${event.hp}).`;
+        return `${playerLabel(event.captor, this.matchMode)} instantly captured ${event.capturedInstanceId} (HP ${event.hp}).`;
       case "attack_compare":
         return `Attack ${event.attackValue} vs Defense ${event.defenseValue} → ${event.outcome}.`;
       case "damage":
         return `${event.targetInstanceId} took ${event.amount} ${event.source} damage (d6=${event.roll}).`;
       case "combat_capture":
-        return `P${event.captor + 1} captured ${event.capturedInstanceId} at ${event.survivorHp} HP.`;
+        return `${playerLabel(event.captor, this.matchMode)} captured ${event.capturedInstanceId} at ${event.survivorHp} HP.`;
       case "turn_ended":
-        return `Turn ended. P${event.nextPlayer + 1} to play.`;
+        return `Turn ended. ${playerLabel(event.nextPlayer, this.matchMode)} to play.`;
       case "game_over": {
         const winner =
-          event.winner === "draw" ? "Draw" : `Player ${event.winner + 1}`;
+          event.winner === "draw"
+            ? "Draw"
+            : playerLabel(event.winner as PlayerId, this.matchMode);
         return `Game over — ${winner} wins (HP ${event.scores.hpTotals[0]} vs ${event.scores.hpTotals[1]}).`;
       }
       default:
@@ -260,11 +373,16 @@ export function formatHandCard(card: HandCard): string {
   return `${card.template.name} · HP ${card.template.maxHp.toString(16).toUpperCase()} · ${arrows}`;
 }
 
-export function playerLabel(id: PlayerId): string {
+export function playerLabel(id: PlayerId, mode: MatchMode = "pvp"): string {
+  if (mode === "cpu") {
+    return id === CPU_PLAYER ? "Computer" : "You";
+  }
   return `Player ${id + 1}`;
 }
 
-export function liveScores(state: GameState): string {
+export function liveScores(state: GameState, mode: MatchMode = "pvp"): string {
   const scores = computeScores(state);
-  return `P1 HP ${scores.hpTotals[0]} (${scores.cardCounts[0]} cards) · P2 HP ${scores.hpTotals[1]} (${scores.cardCounts[1]} cards)`;
+  const p0 = playerLabel(0, mode);
+  const p1 = playerLabel(1, mode);
+  return `${p0} HP ${scores.hpTotals[0]} (${scores.cardCounts[0]} cards) · ${p1} HP ${scores.hpTotals[1]} (${scores.cardCounts[1]} cards)`;
 }
