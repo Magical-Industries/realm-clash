@@ -10,6 +10,20 @@ Designed to pair with the **Wildlife Realms** collectible card line (3D-printed 
 
 **Live site:** [realmclash.magical.enterprises](https://realmclash.magical.enterprises) (GitHub Pages)
 
+**Site version:** `1.1.4` (`major.minor.build` — also shown in the site footer)
+
+**Latest change:** Fixed GitHub Pages deploy — switched source from branch/Jekyll (README) to GitHub Actions artifact; removed repo-root `CNAME`.
+
+### Versioning
+
+Canonical source: [`version.json`](version.json). On every change: bump the version there, update **Site version** and **Latest change** above, and prepend the full entry to [`CHANGELOG.md`](CHANGELOG.md).
+
+| Part | Bump when |
+|------|-----------|
+| **build** | Every iteration / any change shipped |
+| **minor** | New features — extra pages, large refactors |
+| **major** | Major redesign — backend launch, new realm, platform shifts |
+
 ---
 
 ## Platform
@@ -57,8 +71,9 @@ Pushes to `main` build `client/dist` and deploy via GitHub Actions (`.github/wor
 
 **One-time GitHub setup:**
 
-1. Repo **Settings → Pages → Build and deployment → Source:** GitHub Actions
+1. Repo **Settings → Pages → Build and deployment → Source:** **GitHub Actions** (not “Deploy from branch”). If the site shows rendered `README.md`, the source is still on branch deploy — switch it to GitHub Actions and re-run the deploy workflow.
 2. After the first successful deploy, set **Custom domain** to `realmclash.magical.enterprises`
+3. Keep the custom-domain `CNAME` only in `client/public/CNAME` (copied into `client/dist` on build). **Do not** add a `CNAME` at the repo root — that enables Jekyll branch deploy and overrides the built client.
 
 **DNS (at your domain host):**
 
@@ -443,5 +458,3 @@ enforce: at least one arrow; no F/F arrow; directional variance (max − min ≥
 ## License
 
 Rules and game system © Magical Industries. See repository license for code and assets.
-
-v0.1.0

@@ -1,3 +1,5 @@
+import { formatAppVersion } from "../version.js";
+
 export type AppRoute =
   | "home"
   | "realms"
@@ -130,7 +132,7 @@ export function mountShell(
 }
 
 export function defaultFooter(): string {
-  return `<p class="body-sm">Realm Clash · Rules v2.0 · Multi-realm PWA</p>`;
+  return `<p class="body-sm">Realm Clash v${formatAppVersion()} · Rules v2.0 · Multi-realm PWA</p>`;
 }
 
 function escapeHtml(value: string): string {

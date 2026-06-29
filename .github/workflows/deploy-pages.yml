@@ -38,6 +38,13 @@ jobs:
         working-directory: client
         run: npm ci && npm run build
 
+      - name: Verify Pages artifact
+        run: |
+          test -f client/dist/index.html
+          test -f client/dist/CNAME
+          test -f client/dist/.nojekyll
+          ! test -f CNAME
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
