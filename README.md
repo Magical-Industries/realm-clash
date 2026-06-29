@@ -10,9 +10,9 @@ Designed to pair with the **Wildlife Realms** collectible card line (3D-printed 
 
 **Live site:** [realmclash.magical.enterprises](https://realmclash.magical.enterprises) (GitHub Pages)
 
-**Site version:** `1.1.4` (`major.minor.build` — also shown in the site footer)
+**Site version:** `1.1.5` (`major.minor.build` — also shown in the site footer)
 
-**Latest change:** Fixed GitHub Pages deploy — switched source from branch/Jekyll (README) to GitHub Actions artifact; removed repo-root `CNAME`.
+**Latest change:** Landing page tiles (realm, Battle Arena, community) use centered consistent width.
 
 ### Versioning
 

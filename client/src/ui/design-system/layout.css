@@ -291,6 +291,14 @@ body {
   max-width: 36rem;
 }
 
+.section-header--center {
+  text-align: center;
+}
+
+.section-header--center .body-sm {
+  margin-inline: auto;
+}
+
 /* Responsive grids */
 .grid-cards {
   display: grid;
@@ -329,8 +337,14 @@ body {
   }
 }
 
+/* Centered single-tile rows (landing realm, arena, community) */
 .grid-features--single {
-  max-width: 24rem;
+  --feature-tile-width: 24rem;
+  width: min(100%, var(--feature-tile-width));
+  max-width: var(--feature-tile-width);
+  margin-inline: auto;
+  grid-template-columns: 1fr;
+  justify-items: stretch;
 }
 
 /* CTA row */

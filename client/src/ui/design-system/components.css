@@ -612,6 +612,12 @@ body.modal-open {
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-3);
+  justify-content: center;
+}
+
+.surface-card--arena .cta-row,
+.surface-card--arena .difficulty-row {
+  justify-content: center;
 }
 
 .difficulty-row .btn--sm {

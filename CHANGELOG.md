@@ -2,6 +2,10 @@
 
 Site release history (`major.minor.build`). Newest first.
 
+## 1.1.5
+
+- Landing page: realm, Battle Arena, and community tiles share centered `grid-features--single` width (24rem); section headers centered
+
 ## 1.1.4
 
 - **GitHub Pages fix** — Pages was on legacy branch deploy (Jekyll rendered `README.md` instead of the Vite client). Switched source to GitHub Actions workflow; removed repo-root `CNAME` that triggered branch-based custom-domain mapping
