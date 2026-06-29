@@ -443,3 +443,5 @@ enforce: at least one arrow; no F/F arrow; directional variance (max − min ≥
 ## License
 
 Rules and game system © Magical Industries. See repository license for code and assets.
+
+v0.1.0
