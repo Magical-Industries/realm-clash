@@ -4,36 +4,41 @@ import { GameController, playerLabel } from "../game-controller.js";
 import {
   difficultyLabel,
   parseDifficulty,
+  type Difficulty,
 } from "../match/difficulty.js";
 import type { MatchMode } from "../match/types.js";
 import { DEFAULT_REALM_ID, requireRealm } from "../realms/index.js";
 import { HAND_STRIP_HEIGHT } from "../pixi/arena-layout.js";
 import { BoardView } from "../pixi/board-view.js";
 import { HandView } from "../pixi/hand-view.js";
+import { runDeckViewModal } from "../ui/deck-view-modal.js";
 import { runHandRevealSequence, type HandRevealStep } from "../ui/hand-reveal-modal.js";
+import { runMatchSetupModal } from "../ui/match-setup-modal.js";
 import { bindPanels, renderPanels } from "../ui/panels.js";
 import { defaultFooter, mountShell } from "../ui/shell.js";
 
-const params = new URLSearchParams(window.location.search);
-const matchMode = (params.get("mode") === "cpu" ? "cpu" : "pvp") satisfies MatchMode;
-const realmId = params.get("realm") ?? DEFAULT_REALM_ID;
-const difficulty = parseDifficulty(params.get("difficulty"));
+const urlParams = new URLSearchParams(window.location.search);
+const realmId = urlParams.get("realm") ?? DEFAULT_REALM_ID;
 const realm = requireRealm(realmId);
+
+let currentMode: MatchMode = urlParams.get("mode") === "cpu" ? "cpu" : "pvp";
+let currentDifficulty: Difficulty = parseDifficulty(urlParams.get("difficulty"));
+
+function modeLabelText(): string {
+  return currentMode === "cpu"
+    ? `vs Computer · ${difficultyLabel(currentDifficulty)}`
+    : "Hot-seat PvP";
+}
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root not found");
-
-const modeLabel =
-  matchMode === "cpu"
-    ? `vs Computer · ${difficultyLabel(difficulty)}`
-    : "Hot-seat PvP";
 
 mountShell(
   root,
   {
     activeRoute: "play",
-    subtitle: `${realm.name} · ${modeLabel} · Rules v2.0`,
-    status: "Dealing cards…",
+    subtitle: `${realm.name} · ${modeLabelText()} · Rules v2.0`,
+    status: "Preparing match…",
     showBottomNav: false,
     marketingBackground: false,
     headerActions: `<button id="new-game" type="button" class="btn btn--ghost btn--sm">New game</button>`,
@@ -46,8 +51,9 @@ mountShell(
       <aside class="sidebar">
         <section class="panel">
           <h2 class="label">Actions</h2>
-          <div id="action-hint" class="hint">Examining dealt cards…</div>
+          <div id="action-hint" class="hint">Setting up match…</div>
           <div id="mode-actions" class="mode-actions hidden"></div>
+          <div id="attack-order-actions" class="attack-order-actions hidden"></div>
           <div id="chain-actions" class="chain-actions hidden"></div>
         </section>
         <section class="panel">
@@ -64,7 +70,11 @@ mountShell(
   defaultFooter(),
 );
 
-const controller = new GameController({ mode: matchMode, realmId, difficulty });
+const controller = new GameController({
+  mode: currentMode,
+  realmId,
+  difficulty: currentDifficulty,
+});
 const panels = bindPanels();
 
 const host = document.getElementById("pixi-host");
@@ -78,13 +88,38 @@ const handBottom = new HandView();
 const stageOverlay = new Container();
 const dragLayer = new Container();
 
-boardView.app.stage.addChild(stageOverlay, dragLayer);
-
 let arenaActive = false;
 let revealRunning = false;
+let computerTimer: ReturnType<typeof setTimeout> | null = null;
+let pixiReady = false;
+
+function updateHeaderSubtitle(): void {
+  const subtitle = document.querySelector(".brand__subtitle");
+  if (subtitle) {
+    subtitle.textContent = `${realm.name} · ${modeLabelText()} · Rules v2.0`;
+  }
+}
+
+function syncPlayUrl(): void {
+  const params = new URLSearchParams();
+  params.set("mode", currentMode);
+  params.set("realm", realmId);
+  if (currentMode === "cpu") {
+    params.set("difficulty", currentDifficulty);
+  }
+  const next = `${window.location.pathname}?${params.toString()}`;
+  window.history.replaceState(null, "", next);
+}
+
+function applyMatchSettings(mode: MatchMode, difficulty: Difficulty): void {
+  currentMode = mode;
+  currentDifficulty = difficulty;
+  updateHeaderSubtitle();
+  syncPlayUrl();
+}
 
 function buildRevealSteps(): HandRevealStep[] {
-  const { state } = controller.getSnapshot();
+  const { state, matchMode, difficulty } = controller.getSnapshot();
 
   if (matchMode === "cpu") {
     return [
@@ -113,16 +148,66 @@ function buildRevealSteps(): HandRevealStep[] {
   ];
 }
 
-async function beginMatchWithReveal(): Promise<void> {
+async function activateArena(): Promise<void> {
+  if (!pixiReady) {
+    try {
+      await boardView.ready;
+      boardView.app.stage.addChild(stageOverlay, dragLayer);
+      boardView.app.renderer.on("resize", () => {
+        if (arenaActive) syncUi();
+      });
+      pixiReady = true;
+    } catch (error) {
+      console.error("Arena renderer failed to start", error);
+      panels.actionHint.textContent = "Could not start the board renderer. Try refreshing.";
+      return;
+    }
+  }
+  if (arenaActive) syncUi();
+}
+
+async function startMatchFlow(options: { promptSettings?: boolean } = {}): Promise<void> {
   if (revealRunning) return;
   revealRunning = true;
   arenaActive = false;
 
-  await runHandRevealSequence(buildRevealSteps());
+  if (computerTimer) {
+    clearTimeout(computerTimer);
+    computerTimer = null;
+  }
 
-  arenaActive = true;
-  revealRunning = false;
-  syncUi();
+  try {
+    let mode = currentMode;
+    let difficulty = currentDifficulty;
+
+    if (options.promptSettings) {
+      const picked = await runMatchSetupModal({ mode, difficulty });
+      if (!picked) return;
+      mode = picked.mode;
+      difficulty = picked.difficulty;
+    }
+
+    applyMatchSettings(mode, difficulty);
+    controller.resetMatch({ mode, realmId, difficulty });
+
+    if (panels.status) panels.status.textContent = "Dealing cards…";
+    panels.actionHint.textContent = "Examining dealt cards…";
+
+    await runHandRevealSequence(buildRevealSteps(), {
+      onShuffle: (stepIndex) => {
+        if (!controller.reshuffleDealtHands()) return null;
+        return buildRevealSteps()[stepIndex]?.cards ?? null;
+      },
+    });
+
+    arenaActive = true;
+    void activateArena();
+  } catch (error) {
+    console.error("Failed to start match", error);
+    panels.actionHint.textContent = "Could not start the match. Try New game or refresh.";
+  } finally {
+    revealRunning = false;
+  }
 }
 
 boardView.onCellSelected((position) => {
@@ -142,7 +227,7 @@ function wireHand(handView: HandView): void {
     dragLayer,
     app: boardView.app,
     resolveDropTarget: (globalX, globalY) => {
-      if (!arenaActive) return null;
+      if (!arenaActive || !pixiReady) return null;
       const local = boardView.app.stage.toLocal({ x: globalX, y: globalY });
       const hit = boardView.hitTestStagePoint(local.x, local.y);
       const snapshot = controller.getSnapshot();
@@ -165,15 +250,24 @@ function wireHand(handView: HandView): void {
   });
 }
 
+function showPlayerDeck(playerId: PlayerId): void {
+  const snapshot = controller.getSnapshot();
+  void runDeckViewModal({
+    title: `${playerLabel(playerId, snapshot.matchMode)} deck`,
+    subtitle: "Opening hand + captures − cards lost to your opponent.",
+    cards: controller.getPlayerDeck(playerId),
+  });
+}
+
+handTop.onDeckViewRequested(showPlayerDeck);
+handBottom.onDeckViewRequested(showPlayerDeck);
+
 wireHand(handTop);
 wireHand(handBottom);
 
-panels.newGameButton.addEventListener("click", () => {
-  controller.resetMatch({ mode: matchMode, realmId, difficulty });
-  void beginMatchWithReveal();
+panels.newGameButton?.addEventListener("click", () => {
+  void startMatchFlow({ promptSettings: true });
 });
-
-let computerTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleComputerTurn(): void {
   if (!arenaActive) return;
@@ -188,7 +282,7 @@ function scheduleComputerTurn(): void {
 }
 
 function syncUi(): void {
-  if (!arenaActive) return;
+  if (!arenaActive || !pixiReady) return;
 
   const snapshot = controller.getSnapshot();
   const { state, phase, selectedCardId, selectedPosition, matchMode: mode } = snapshot;
@@ -219,6 +313,7 @@ function syncUi(): void {
       dimmed: currentPlayer !== 0,
       label: topLabel,
       hidden: hideTopHand,
+      showDeckButton: arenaActive && !hideTopHand,
     },
   );
   handTop.root.position.set(0, 0);
@@ -233,6 +328,7 @@ function syncUi(): void {
     {
       dimmed: currentPlayer !== 1,
       label: bottomLabel,
+      showDeckButton: arenaActive,
     },
   );
   handBottom.root.position.set(0, screenHeight - HAND_STRIP_HEIGHT);
@@ -241,6 +337,14 @@ function syncUi(): void {
   renderPanels(panels, snapshot, {
     onMode: (pick) => {
       controller.chooseMode(pick);
+      syncUi();
+    },
+    onAttackTarget: (direction) => {
+      controller.pickAttackTarget(direction);
+      syncUi();
+    },
+    onUndoAttackOrder: () => {
+      controller.undoLastAttackTarget();
       syncUi();
     },
     onChain: (option) => {
@@ -255,10 +359,12 @@ function syncUi(): void {
   scheduleComputerTurn();
 }
 
-boardView.app.renderer.on("resize", () => {
-  syncUi();
-});
+function bootArena(): void {
+  void startMatchFlow({ promptSettings: false });
+}
 
-void boardView.ready.then(() => {
-  void beginMatchWithReveal();
-});
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootArena, { once: true });
+} else {
+  bootArena();
+}

@@ -2,6 +2,47 @@
 
 Site release history (`major.minor.build`). Newest first.
 
+## 1.1.13
+
+- Live deck viewer groups cards into **Still in hand**, **Placed on board**, and **Captured** sections with distinct badges, borders, and current HP on board
+
+## 1.1.12
+
+- Deck viewer (▤ icon on your hand strip): see your live roster anytime — opening hand + captures − losses, with in-hand / on-board / captured status
+- Tests for deck tracking and deck-view modal
+
+## 1.1.11
+
+- Attack mode with multiple mutual arrows: choose resolve order (1st, 2nd, 3rd…) in the arena sidebar; CPU picks strongest-first with random tie-breaks
+- Tests for attack-order controller flow, panel UI, and CPU ordering
+
+## 1.1.10
+
+- Added **client test suite** (Vitest + jsdom) for controller, CPU AI, panels, hand reveal, shell, and layout CSS contracts
+- Root `npm test` runs core + client; CI runs tests before deploy
+- README documents testing policy: new features must include tests
+
+## 1.1.9
+
+- CPU auto-resolves chain attacks (uses captor identity; random tie-break when options are equal)
+- Fixed arena layout — board no longer pushed down when chain UI or event log grows; sidebar scrolls in place
+- Floating header and footer on large screens (≥901px); sticky chrome on mobile arena
+- Hand reveal offers **Shuffle deck** to redeal before starting the match
+
+## 1.1.8
+
+- Fixed arena auto-start on first landing — `app.renderer` was accessed before Pixi `init()`, which threw and blocked the boot handler (New game still worked)
+
+## 1.1.7
+
+- Arena auto-starts on landing (deferred microtask + always fresh deal); hand reveal opens without clicking New game
+- New game opens match setup modal — choose PvP vs CPU and CPU difficulty before cards are dealt
+
+## 1.1.6
+
+- Arena auto-starts the hand-reveal flow on first landing (no extra "New game" click); button kept for rematches
+- Realm Clash logo in site header (`client/public/images/logo.png`) with square `logo-mark.png` for favicon/PWA icons
+
 ## 1.1.5
 
 - Landing page: realm, Battle Arena, and community tiles share centered `grid-features--single` width (24rem); section headers centered

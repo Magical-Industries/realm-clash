@@ -30,13 +30,13 @@ jobs:
             core/package-lock.json
             client/package-lock.json
 
-      - name: Install and build core
+      - name: Install, test, and build core
         working-directory: core
-        run: npm ci && npm run build
+        run: npm ci && npm test && npm run build
 
-      - name: Install and build client
+      - name: Install, test, and build client
         working-directory: client
-        run: npm ci && npm run build
+        run: npm ci && npm test && npm run build
 
       - name: Verify Pages artifact
         run: |

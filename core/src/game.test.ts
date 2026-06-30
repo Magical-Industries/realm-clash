@@ -160,6 +160,67 @@ describe("game rules", () => {
     expect(continued.events.some((e) => e.type === "attack_compare")).toBe(true);
   });
 
+  it("rejects chain choice from a non-captor player", () => {
+    const captured = template("cap", 1, [{ direction: 0, attack: 8, defense: 3 }]);
+    const north = template("north", 10, [{ direction: 4, attack: 2, defense: 2 }]);
+
+    const state = createGame({
+      player0Hand: hand("p0", [captured, template("x1", 20, [{ direction: 1, attack: 2, defense: 2 }]), template("x2", 20, [{ direction: 2, attack: 2, defense: 2 }]), template("x3", 20, [{ direction: 3, attack: 2, defense: 2 }]), template("x4", 20, [{ direction: 4, attack: 2, defense: 2 }])]),
+      player1Hand: hand("p1", [north, template("y1", 20, [{ direction: 5, attack: 2, defense: 2 }]), template("y2", 20, [{ direction: 6, attack: 2, defense: 2 }]), template("y3", 20, [{ direction: 7, attack: 2, defense: 2 }]), template("y4", 20, [{ direction: 0, attack: 2, defense: 2 }])]),
+      startingPlayer: 0,
+    });
+
+    const midState = {
+      ...state,
+      currentPlayer: 1,
+      grid: state.grid.map((row, rowIndex) =>
+        row.map((cell, colIndex) => {
+          if (rowIndex === 1 && colIndex === 1) {
+            return {
+              instanceId: "cap-board",
+              template: captured,
+              owner: 0 as const,
+              currentHp: 1,
+              position: { row: 1, col: 1 },
+            };
+          }
+          if (rowIndex === 0 && colIndex === 1) {
+            return {
+              instanceId: "north-board",
+              template: north,
+              owner: 1 as const,
+              currentHp: 10,
+              position: { row: 0, col: 1 },
+            };
+          }
+          return cell;
+        }),
+      ),
+      pending: {
+        type: "chain_choice" as const,
+        captor: 0 as const,
+        attackerInstanceId: "cap-board",
+        options: [
+          {
+            attackerInstanceId: "cap-board",
+            direction: 0 as const,
+            defenderInstanceId: "north-board",
+            defenderPosition: { row: 0, col: 1 },
+          },
+        ],
+      },
+    };
+
+    const rejected = applyChainChoice(
+      midState,
+      { playerId: 1, attackerInstanceId: "cap-board", direction: 0 },
+      new ScriptedRng([6]),
+    );
+
+    expect(rejected.ok).toBe(false);
+    expect(rejected.error).toBe("Only the captor may choose the chain attack");
+  });
+
   it("rejects attack mode when only capture is available", () => {
     const lion = template("lion", 32, [{ direction: 0, attack: 5, defense: 3 }]);
     const zebra = template("zebra", 32, [{ direction: 2, attack: 3, defense: 4 }]);

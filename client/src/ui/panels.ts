@@ -1,11 +1,14 @@
-import type { ChainAttackOption, PlacementMode } from "@magicalindustries/realm-clash-core";
+import type { ChainAttackOption, Direction, PlacementMode } from "@magicalindustries/realm-clash-core";
 import type { ControllerSnapshot } from "../game-controller.js";
 import { liveScores, playerLabel } from "../game-controller.js";
+
+const DIRECTION_LABELS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 
 export interface PanelElements {
   status: HTMLElement;
   actionHint: HTMLElement;
   modeActions: HTMLElement;
+  attackOrderActions: HTMLElement;
   chainActions: HTMLElement;
   scores: HTMLElement;
   eventLog: HTMLElement;
@@ -17,6 +20,7 @@ export function bindPanels(root: Document = document): PanelElements {
     status: root.getElementById("status")!,
     actionHint: root.getElementById("action-hint")!,
     modeActions: root.getElementById("mode-actions")!,
+    attackOrderActions: root.getElementById("attack-order-actions")!,
     chainActions: root.getElementById("chain-actions")!,
     scores: root.getElementById("scores")!,
     eventLog: root.getElementById("event-log")!,
@@ -29,18 +33,23 @@ export function renderPanels(
   snapshot: ControllerSnapshot,
   handlers: {
     onMode: (mode: PlacementMode) => void;
+    onAttackTarget: (direction: Direction) => void;
+    onUndoAttackOrder: () => void;
     onChain: (option: ChainAttackOption) => void;
   },
 ): void {
   const { state, phase, matchMode } = snapshot;
   const current = state.currentPlayer;
+  const chainActor = state.pending?.captor;
 
   panels.status.textContent =
     state.status === "finished"
       ? `Match finished — ${state.winner === "draw" ? "Draw" : playerLabel(state.winner as 0 | 1, matchMode)} wins`
-      : state.pending
-        ? `${playerLabel(current, matchMode)} — resolve chain`
-        : `${playerLabel(current, matchMode)} to play · Turn ${state.turnNumber}`;
+      : state.pending && chainActor !== undefined
+        ? `${playerLabel(chainActor, matchMode)} — resolve chain`
+        : phase === "select_attack_order"
+          ? `${playerLabel(current, matchMode)} — set attack order`
+          : `${playerLabel(current, matchMode)} to play · Turn ${state.turnNumber}`;
 
   panels.actionHint.textContent = hintForPhase(snapshot);
   panels.scores.innerHTML = scoreHtml(snapshot);
@@ -50,14 +59,23 @@ export function renderPanels(
     .join("");
 
   renderModeActions(panels, snapshot, handlers.onMode);
+  renderAttackOrderActions(panels, snapshot, handlers);
   renderChainActions(panels, snapshot, handlers.onChain);
 }
 
 function hintForPhase(snapshot: ControllerSnapshot): string {
   const { matchMode, phase, state } = snapshot;
 
-  if (matchMode === "cpu" && state.currentPlayer === 0 && phase !== "game_over") {
-    return "Computer is thinking…";
+  if (matchMode === "cpu" && phase !== "game_over") {
+    if (phase === "select_chain" && state.pending?.captor === 0) {
+      return "Computer is resolving the chain…";
+    }
+    if (phase === "select_attack_order" && state.currentPlayer === 0) {
+      return "Computer is choosing attack order…";
+    }
+    if (!state.pending && state.currentPlayer === 0) {
+      return "Computer is thinking…";
+    }
   }
 
   switch (phase) {
@@ -67,6 +85,8 @@ function hintForPhase(snapshot: ControllerSnapshot): string {
       return "Drag onto a highlighted cell, or tap an empty cell on the board.";
     case "select_mode":
       return "Choose Capture (free takes) or Attack (mutual-arrow battles).";
+    case "select_attack_order":
+      return "Tap targets in the order you want mutual attacks to resolve.";
     case "select_chain":
       return "Choose which chain attack to resolve next.";
     case "game_over":
@@ -107,6 +127,88 @@ function renderModeActions(
   }
 }
 
+function directionLabel(direction: Direction): string {
+  return DIRECTION_LABELS[direction] ?? `D${direction}`;
+}
+
+function renderAttackOrderActions(
+  panels: PanelElements,
+  snapshot: ControllerSnapshot,
+  handlers: {
+    onAttackTarget: (direction: Direction) => void;
+    onUndoAttackOrder: () => void;
+  },
+): void {
+  panels.attackOrderActions.innerHTML = "";
+
+  const humanTurn =
+    snapshot.state.currentPlayer === snapshot.humanPlayer &&
+    !snapshot.state.pending;
+  if (snapshot.phase !== "select_attack_order" || !humanTurn) {
+    panels.attackOrderActions.classList.add("hidden");
+    return;
+  }
+
+  panels.attackOrderActions.classList.remove("hidden");
+
+  const picked = new Set(snapshot.attackArrowOrder);
+  const remaining = snapshot.mutualAttacks.filter((attack) => !picked.has(attack.direction));
+
+  const orderedHtml =
+    snapshot.attackArrowOrder.length === 0
+      ? `<p class="attack-order__empty body-sm">No attacks chosen yet.</p>`
+      : `<ol class="attack-order__list">
+          ${snapshot.attackArrowOrder
+            .map((direction, index) => {
+              const attack = snapshot.mutualAttacks.find((item) => item.direction === direction);
+              if (!attack) return "";
+              return `<li>
+                <span class="attack-order__step">${index + 1}</span>
+                ${directionLabel(direction)} → ${escapeHtml(attack.defenderInstanceId)}
+                @ (${attack.defenderPosition.row},${attack.defenderPosition.col})
+              </li>`;
+            })
+            .join("")}
+        </ol>`;
+
+  panels.attackOrderActions.innerHTML = `
+    <div class="attack-order">
+      <p class="label">Attack order</p>
+      ${orderedHtml}
+      <div class="attack-order__remaining">
+        ${remaining
+          .map((attack) => {
+            const nextStep = snapshot.attackArrowOrder.length + 1;
+            return `<button
+              type="button"
+              class="btn btn--primary attack-order__pick"
+              data-direction="${attack.direction}"
+            >
+              ${nextStep}. Attack ${directionLabel(attack.direction)} → ${escapeHtml(attack.defenderInstanceId)}
+            </button>`;
+          })
+          .join("")}
+      </div>
+      ${
+        snapshot.attackArrowOrder.length > 0
+          ? `<button type="button" class="btn btn--ghost attack-order__undo">Undo last</button>`
+          : ""
+      }
+    </div>
+  `;
+
+  panels.attackOrderActions.querySelectorAll<HTMLButtonElement>("[data-direction]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const direction = Number(button.dataset.direction) as Direction;
+      handlers.onAttackTarget(direction);
+    });
+  });
+
+  panels.attackOrderActions
+    .querySelector<HTMLButtonElement>(".attack-order__undo")
+    ?.addEventListener("click", handlers.onUndoAttackOrder);
+}
+
 function renderChainActions(
   panels: PanelElements,
   snapshot: ControllerSnapshot,
@@ -114,7 +216,12 @@ function renderChainActions(
 ): void {
   panels.chainActions.innerHTML = "";
   const pending = snapshot.state.pending;
-  if (snapshot.phase !== "select_chain" || !pending) {
+  const humanPlayer = snapshot.humanPlayer;
+  if (
+    snapshot.phase !== "select_chain" ||
+    !pending ||
+    pending.captor !== humanPlayer
+  ) {
     panels.chainActions.classList.add("hidden");
     return;
   }

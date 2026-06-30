@@ -47,6 +47,7 @@ export class HandView {
   private layoutCardWidth = MAX_CARD_WIDTH;
   private layoutCardHeight = MAX_CARD_HEIGHT;
   private onSelect?: (instanceId: string) => void;
+  private onDeckView?: (playerId: PlayerId) => void;
   private dragContext?: DragContext;
   private activeDrag: ActiveDrag | null = null;
   private suppressTapFor: string | null = null;
@@ -55,6 +56,10 @@ export class HandView {
 
   onCardSelected(handler: (instanceId: string) => void): void {
     this.onSelect = handler;
+  }
+
+  onDeckViewRequested(handler: (playerId: PlayerId) => void): void {
+    this.onDeckView = handler;
   }
 
   configureDrag(context: DragContext): void {
@@ -67,7 +72,7 @@ export class HandView {
     selectedCardId: string | null,
     interactive: boolean,
     width: number,
-    options: { dimmed?: boolean; label?: string; hidden?: boolean } = {},
+    options: { dimmed?: boolean; label?: string; hidden?: boolean; showDeckButton?: boolean } = {},
   ): void {
     this.root.removeChildren();
     this.root.alpha = options.dimmed ? 0.55 : 1;
@@ -91,6 +96,10 @@ export class HandView {
       });
       label.position.set(8, 2);
       this.root.addChild(label);
+    }
+
+    if (options.showDeckButton && this.onDeckView) {
+      this.root.addChild(this.createDeckButton(width, playerId));
     }
 
     if (hand.length === 0) {
@@ -193,6 +202,41 @@ export class HandView {
       mark.position.set(x + cardWidth / 2, cardsY + cardHeight / 2);
       this.root.addChild(back, mark);
     }
+  }
+
+  private createDeckButton(width: number, playerId: PlayerId): Container {
+    const size = 28;
+    const button = new Container();
+    const ownerColor = playerPixi(playerId);
+
+    const body = new Graphics()
+      .roundRect(0, 0, size, size, 6)
+      .fill({ color: ownerColor, alpha: 0.22 })
+      .stroke({ color: theme.pixi.border, width: 1.2, alpha: 0.95 });
+    button.addChild(body);
+
+    const icon = new Text({
+      text: "▤",
+      style: {
+        fill: theme.pixi.textPrimary,
+        fontSize: 14,
+        fontWeight: "700",
+      },
+    });
+    icon.anchor.set(0.5);
+    icon.position.set(size / 2, size / 2);
+    button.addChild(icon);
+
+    button.position.set(width - size - 10, 4);
+    button.eventMode = "static";
+    button.cursor = "pointer";
+    button.hitArea = new Rectangle(0, 0, size, size);
+    button.on("pointertap", (event) => {
+      event.stopPropagation();
+      this.onDeckView?.(playerId);
+    });
+
+    return button;
   }
 
   private computeHandLayout(handCount: number, width: number): HandLayout {

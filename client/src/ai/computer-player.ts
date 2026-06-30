@@ -7,9 +7,12 @@ import {
   type ChainChoiceCommand,
   type GameState,
   type PlacementAnalysis,
+  type MutualAttack,
   type PlacementMode,
   type PlayerId,
   type Position,
+  type Rng,
+  type Direction,
 } from "@magicalindustries/realm-clash-core";
 
 export interface ComputerPlacement {
@@ -95,15 +98,56 @@ export function pickComputerPlacement(
   return best;
 }
 
+function scoreMutualAttack(mutual: MutualAttack): number {
+  return mutual.attackValue * 50 - mutual.defenseValue;
+}
+
+export function pickComputerAttackOrder(
+  mutualAttacks: MutualAttack[],
+  rng: Rng,
+): Direction[] {
+  if (mutualAttacks.length <= 1) {
+    return mutualAttacks.map((attack) => attack.direction);
+  }
+
+  const remaining = [...mutualAttacks];
+  const order: Direction[] = [];
+
+  while (remaining.length > 0) {
+    let bestScore = -Infinity;
+    const tied: MutualAttack[] = [];
+
+    for (const mutual of remaining) {
+      const score = scoreMutualAttack(mutual);
+      if (score > bestScore) {
+        bestScore = score;
+        tied.length = 0;
+        tied.push(mutual);
+      } else if (score === bestScore) {
+        tied.push(mutual);
+      }
+    }
+
+    const picked =
+      tied.length === 1 ? tied[0]! : tied[rng.rollDie(tied.length) - 1]!;
+    order.push(picked.direction);
+    const pickedIndex = remaining.findIndex((mutual) => mutual.direction === picked.direction);
+    remaining.splice(pickedIndex, 1);
+  }
+
+  return order;
+}
+
 export function pickComputerChain(
   state: GameState,
   playerId: PlayerId,
+  rng: Rng,
 ): Omit<ChainChoiceCommand, "playerId"> | null {
   const pending = state.pending;
   if (!pending || pending.options.length === 0) return null;
 
-  let best = pending.options[0]!;
   let bestScore = -Infinity;
+  const tied: typeof pending.options = [];
 
   for (const option of pending.options) {
     const attacker = findCardById(state, option.attackerInstanceId);
@@ -116,9 +160,16 @@ export function pickComputerChain(
 
     if (score > bestScore) {
       bestScore = score;
-      best = option;
+      tied.length = 0;
+      tied.push(option);
+    } else if (score === bestScore) {
+      tied.push(option);
     }
   }
+
+  if (tied.length === 0) return null;
+
+  const best = tied[rng.rollDie(tied.length) - 1]!;
 
   return {
     attackerInstanceId: best.attackerInstanceId,

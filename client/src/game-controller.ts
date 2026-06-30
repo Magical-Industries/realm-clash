@@ -10,6 +10,7 @@ import {
   type GameEvent,
   type GameState,
   type HandCard,
+  type MutualAttack,
   type PlacementCommand,
   type PlacementMode,
   type PlayerId,
@@ -18,7 +19,16 @@ import {
   type Rng,
 } from "@magicalindustries/realm-clash-core";
 
-import { pickComputerChain, pickComputerPlacement } from "./ai/computer-player.js";
+import {
+  pickComputerAttackOrder,
+  pickComputerChain,
+  pickComputerPlacement,
+} from "./ai/computer-player.js";
+import {
+  cloneHandCards,
+  computePlayerDeck,
+  type DeckCardEntry,
+} from "./match/deck-tracker.js";
 import { type Difficulty, difficultyLabel } from "./match/difficulty.js";
 import type { MatchMode } from "./match/types.js";
 import { DEFAULT_REALM_ID, requireRealm } from "./realms/index.js";
@@ -29,6 +39,7 @@ export type UiPhase =
   | "select_card"
   | "select_cell"
   | "select_mode"
+  | "select_attack_order"
   | "select_chain"
   | "game_over";
 
@@ -49,6 +60,8 @@ export interface ControllerSnapshot {
   selectedPosition: Position | null;
   availableModes: PlacementMode[];
   mutualDirections: Direction[];
+  mutualAttacks: MutualAttack[];
+  attackArrowOrder: Direction[];
   eventLog: string[];
 }
 
@@ -67,6 +80,9 @@ export class GameController {
   private selectedPosition: Position | null = null;
   private availableModes: PlacementMode[] = ["none"];
   private mutualDirections: Direction[] = [];
+  private mutualAttacks: MutualAttack[] = [];
+  private attackArrowOrder: Direction[] = [];
+  private initialHands: Record<PlayerId, HandCard[]> = { 0: [], 1: [] };
 
   private eventLog: string[] = [];
 
@@ -92,6 +108,8 @@ export class GameController {
       selectedPosition: this.selectedPosition,
       availableModes: this.availableModes,
       mutualDirections: this.mutualDirections,
+      mutualAttacks: [...this.mutualAttacks],
+      attackArrowOrder: [...this.attackArrowOrder],
       eventLog: [...this.eventLog],
     };
   }
@@ -100,13 +118,38 @@ export class GameController {
     return this.matchMode === "cpu" && playerId === CPU_PLAYER;
   }
 
+  /** Live roster: opening hand + captures − cards lost to the opponent. */
+  getPlayerDeck(playerId: PlayerId): DeckCardEntry[] {
+    return computePlayerDeck(this.initialHands[playerId], this.state, playerId);
+  }
+
   isComputerTurn(): boolean {
-    return (
-      this.matchMode === "cpu" &&
-      this.state.status === "active" &&
-      this.isComputerPlayer(this.state.currentPlayer) &&
-      this.phase !== "game_over"
-    );
+    if (this.matchMode !== "cpu" || this.state.status !== "active" || this.phase === "game_over") {
+      return false;
+    }
+
+    if (this.phase === "select_chain" && this.state.pending) {
+      return this.isComputerPlayer(this.state.pending.captor);
+    }
+
+    return this.isComputerPlayer(this.state.currentPlayer) && !this.state.pending;
+  }
+
+  /** Redeal hands before the match starts (empty board only). */
+  reshuffleDealtHands(): boolean {
+    if (this.state.status !== "active" || this.state.pending) return false;
+    const boardEmpty = this.state.grid.every((row) => row.every((cell) => cell === null));
+    if (!boardEmpty) return false;
+
+    const realm = requireRealm(this.realmId);
+    const { player0, player1 } = realm.createMatchHands({
+      mode: this.matchMode,
+      difficulty: this.difficulty,
+      rng: this.rng,
+    });
+    this.state = { ...this.state, hands: [player0, player1] };
+    this.snapshotInitialHands();
+    return true;
   }
 
   resetMatch(config: MatchConfig = {}): void {
@@ -121,6 +164,8 @@ export class GameController {
     this.selectedPosition = null;
     this.availableModes = ["none"];
     this.mutualDirections = [];
+    this.mutualAttacks = [];
+    this.attackArrowOrder = [];
     this.eventLog = [];
     this.phase = "select_card";
     this.pushSystem(this.openingMessage());
@@ -133,9 +178,16 @@ export class GameController {
     let guard = 0;
     while (guard++ < 24 && this.isComputerTurn()) {
       if (this.phase === "select_chain" && this.state.pending) {
-        const chain = pickComputerChain(this.state, CPU_PLAYER);
+        const captor = this.state.pending.captor;
+        const chain = pickComputerChain(this.state, captor, this.rng);
         if (!chain) break;
         this.chooseChain(chain);
+        continue;
+      }
+
+      if (this.phase === "select_attack_order") {
+        const order = pickComputerAttackOrder(this.mutualAttacks, this.rng);
+        this.setAttackArrowOrder(order);
         continue;
       }
 
@@ -195,6 +247,8 @@ export class GameController {
     this.phase = "select_cell";
     this.availableModes = ["none"];
     this.mutualDirections = [];
+    this.mutualAttacks = [];
+    this.attackArrowOrder = [];
   }
 
   private applySelectCell(position: Position): void {
@@ -215,7 +269,9 @@ export class GameController {
 
     this.selectedPosition = position;
     this.availableModes = getAvailableModes(analysis);
+    this.mutualAttacks = analysis.mutualAttacks;
     this.mutualDirections = analysis.mutualAttacks.map((m) => m.direction);
+    this.attackArrowOrder = [];
 
     const choosable = this.availableModes.filter((m) => m !== "none");
     if (choosable.length === 0) {
@@ -232,7 +288,34 @@ export class GameController {
 
   chooseMode(mode: PlacementMode): void {
     if (this.phase !== "select_mode") return;
+    if (mode === "attack" && this.mutualAttacks.length > 1) {
+      this.attackArrowOrder = [];
+      this.phase = "select_attack_order";
+      return;
+    }
     this.commitPlacement(mode);
+  }
+
+  pickAttackTarget(direction: Direction): void {
+    if (this.phase !== "select_attack_order") return;
+    if (!this.mutualDirections.includes(direction)) return;
+    if (this.attackArrowOrder.includes(direction)) return;
+
+    this.attackArrowOrder.push(direction);
+    if (this.attackArrowOrder.length === this.mutualDirections.length) {
+      this.commitPlacement("attack");
+    }
+  }
+
+  undoLastAttackTarget(): void {
+    if (this.phase !== "select_attack_order") return;
+    this.attackArrowOrder.pop();
+  }
+
+  private setAttackArrowOrder(order: Direction[]): void {
+    if (this.phase !== "select_attack_order") return;
+    this.attackArrowOrder = [...order];
+    this.commitPlacement("attack");
   }
 
   chooseChain(command: Omit<ChainChoiceCommand, "playerId">): void {
@@ -240,7 +323,7 @@ export class GameController {
 
     const result = applyChainChoice(
       this.state,
-      { ...command, playerId: this.state.currentPlayer },
+      { ...command, playerId: this.state.pending.captor },
       this.rng,
     );
 
@@ -265,7 +348,10 @@ export class GameController {
     };
 
     if (mode === "attack") {
-      command.attackArrowOrder = [...this.mutualDirections].sort((a, b) => a - b);
+      command.attackArrowOrder =
+        this.attackArrowOrder.length > 0
+          ? [...this.attackArrowOrder]
+          : [...this.mutualDirections];
     }
 
     const result = applyPlacement(this.state, command, this.rng);
@@ -282,7 +368,7 @@ export class GameController {
   private afterEngineStep(): void {
     if (this.state.pending) {
       this.phase = "select_chain";
-      const actor = playerLabel(this.state.currentPlayer, this.matchMode);
+      const actor = playerLabel(this.state.pending.captor, this.matchMode);
       this.pushSystem(`${actor} — resolve chain.`);
       return;
     }
@@ -291,6 +377,8 @@ export class GameController {
     this.selectedPosition = null;
     this.availableModes = ["none"];
     this.mutualDirections = [];
+    this.mutualAttacks = [];
+    this.attackArrowOrder = [];
 
     if (this.state.status === "finished") {
       this.phase = "game_over";
@@ -307,12 +395,25 @@ export class GameController {
       difficulty: this.difficulty,
       rng: this.rng,
     });
-    return createGame({
+    const state = createGame({
       player0Hand: player0,
       player1Hand: player1,
       config: { elementBonusEnabled: true },
       startingPlayer: this.matchMode === "cpu" ? HUMAN_PLAYER : CPU_PLAYER,
     });
+    this.snapshotInitialHandsFrom(state);
+    return state;
+  }
+
+  private snapshotInitialHands(): void {
+    this.snapshotInitialHandsFrom(this.state);
+  }
+
+  private snapshotInitialHandsFrom(state: GameState): void {
+    this.initialHands = {
+      0: cloneHandCards(state.hands[0]),
+      1: cloneHandCards(state.hands[1]),
+    };
   }
 
   private openingMessage(): string {

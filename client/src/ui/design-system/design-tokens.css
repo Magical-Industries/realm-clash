@@ -106,6 +106,7 @@
   /* Layout */
   --container-max: 72rem;
   --header-height: 3.5rem;
+  --footer-height: 3rem;
   --bottom-nav-height: 4rem;
   --tap-target: 44px;
 

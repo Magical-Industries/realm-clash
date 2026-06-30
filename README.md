@@ -10,9 +10,9 @@ Designed to pair with the **Wildlife Realms** collectible card line (3D-printed 
 
 **Live site:** [realmclash.magical.enterprises](https://realmclash.magical.enterprises) (GitHub Pages)
 
-**Site version:** `1.1.5` (`major.minor.build` — also shown in the site footer)
+**Site version:** `1.1.13` (`major.minor.build` — also shown in the site footer)
 
-**Latest change:** Landing page tiles (realm, Battle Arena, community) use centered consistent width.
+**Latest change:** Live deck groups in-hand vs on-board cards with distinct styling.
 
 ### Versioning
 
@@ -23,6 +23,21 @@ Canonical source: [`version.json`](version.json). On every change: bump the vers
 | **build** | Every iteration / any change shipped |
 | **minor** | New features — extra pages, large refactors |
 | **major** | Major redesign — backend launch, new realm, platform shifts |
+
+### Testing
+
+Run the full suite from the repo root:
+
+```bash
+npm test
+```
+
+| Package | What to test | Command |
+|---------|----------------|---------|
+| **core** | Rules engine — placement, combat, chains, scoring | `cd core && npm test` |
+| **client** | Controller, CPU AI, panels, modals, shell, layout CSS contracts | `cd client && npm test` |
+
+**Policy:** every new feature ships with tests — core logic in `core/src/**/*.test.ts`, client behavior/UI in `client/src/**/*.test.ts`. CI runs both suites before deploy.
 
 ---
 
@@ -55,7 +70,7 @@ realm-clash/
 └── server/         # Authoritative match backend (future)
 ```
 
-The **`core/`** package (`@magicalindustries/realm-clash-core`) enforces Realm Clash v2.0 rules: placement modes, combat, chains, scoring, and card generation. Run tests with `cd core && npm test`.
+The **`core/`** package (`@magicalindustries/realm-clash-core`) enforces Realm Clash v2.0 rules: placement modes, combat, chains, scoring, and card generation.
 
 The **`client/`** package is a minimal PixiJS hot-seat prototype wired to the core engine. Run it with:
 

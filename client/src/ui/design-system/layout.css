@@ -28,6 +28,41 @@ body {
   flex-direction: column;
 }
 
+@media (min-width: 901px) {
+  #app {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .app-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+  }
+
+  .app-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    padding-block: var(--space-3);
+    background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  .app-main {
+    padding-top: var(--header-height);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #app:has(.app-footer) .app-main {
+    padding-bottom: var(--footer-height);
+  }
+}
+
 /* Subtle ambient background on marketing/content pages */
 .page--marketing {
   background:
@@ -72,11 +107,35 @@ body {
 
 .brand {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
   text-decoration: none;
   color: inherit;
   flex-shrink: 0;
+  min-width: 0;
+}
+
+.brand__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.brand__logo {
+  width: 2.5rem;
+  height: 2.5rem;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 10px rgba(0, 229, 192, 0.2));
+}
+
+@media (min-width: 768px) {
+  .brand__logo {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
 }
 
 .brand__title {
@@ -211,16 +270,37 @@ body {
 }
 
 /* Arena layout */
+.page--arena {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.page--arena .app-main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+@media (min-width: 901px) {
+  .page--arena .app-main {
+    overflow: hidden;
+  }
+}
+
 .arena-layout {
   flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 0;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .stage-wrap {
   min-height: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -244,18 +324,34 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
 @media (max-width: 900px) {
   .arena-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 40vh);
   }
 
   .sidebar {
     border-left: none;
     border-top: 1px solid var(--border);
-    max-height: 45vh;
+    max-height: none;
+  }
+
+  .page--arena .app-header {
+    position: sticky;
+    top: 0;
+  }
+
+  .page--arena .app-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 50;
+    flex-shrink: 0;
+    padding-block: var(--space-2);
+    background: color-mix(in srgb, var(--bg-secondary) 95%, transparent);
+    backdrop-filter: blur(12px);
   }
 }
 

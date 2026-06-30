@@ -55,6 +55,7 @@ export function renderShell(options: ShellOptions): string {
 
   const pageClass = [
     marketingBackground ? "page--marketing" : "",
+    activeRoute === "play" ? "page--arena" : "",
     showBottomNav ? "page--with-bottom-nav" : "",
   ]
     .filter(Boolean)
@@ -91,8 +92,18 @@ export function renderShell(options: ShellOptions): string {
     <div id="app" class="${pageClass}">
       <header class="app-header">
         <a class="brand" href="/">
-          <h1 class="brand__title">${escapeHtml(title)}</h1>
-          ${subtitleHtml}
+          <img
+            class="brand__logo"
+            src="/images/logo.png"
+            alt=""
+            width="44"
+            height="44"
+            decoding="async"
+          />
+          <span class="brand__text">
+            <h1 class="brand__title">${escapeHtml(title)}</h1>
+            ${subtitleHtml}
+          </span>
         </a>
         <nav class="app-nav" aria-label="Main navigation">${desktopNav}</nav>
         ${statusSlot}
